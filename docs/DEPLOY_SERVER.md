@@ -23,13 +23,18 @@ Browser  →  https://adverify.codewithbharat.dev   (static React on Hostinger)
 
 ## 1. Create the Render Python service
 
+Render is free if you pick a **Free** instance. Do not add a credit card, Postgres, or a disk — those trigger billing.
+
+If Blueprint asks for a card, skip it and create a **Web Service** instead:
+
 1. Sign in at [dashboard.render.com](https://dashboard.render.com).
-2. **New** → **Blueprint** and select `bharatdigihub/admention-ai`, **or** **New** → **Web Service** and connect that repo.
+2. **New** → **Web Service** → connect `bharatdigihub/admention-ai`.
 3. If you create the service manually (not Blueprint):
 
    | Setting | Value |
    | --- | --- |
-   | Runtime | Python 3 |
+   | Runtime | **Python 3** (not Docker) |
+   | Instance / plan | **Free** (not Starter) |
    | Root Directory | `backend` |
    | Build Command | `pip install -r requirements.txt` |
    | Start Command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
@@ -39,6 +44,7 @@ Browser  →  https://adverify.codewithbharat.dev   (static React on Hostinger)
 
    | Key | Value |
    | --- | --- |
+   | `PYTHON_VERSION` | `3.12.8` (required — default is 3.14, which cannot install youtube-transcript-api) |
    | `APP_ENV` | `production` |
    | `DATABASE_URL` | `sqlite:///./admention.db` |
    | `BACKEND_CORS_ORIGINS` | `https://adverify.codewithbharat.dev` |
@@ -106,4 +112,4 @@ If the UI says the backend is unavailable, wait for Render to wake, then confirm
 
 ## Optional: one Docker container (VPS)
 
-`Dockerfile` and `docker-compose.prod.yml` still package UI + API together if you later use a VPS. That is not required for the Render + adverify setup.
+`Dockerfile.prod` and `docker-compose.prod.yml` still package UI + API together if you later use a VPS. That is not required for the Render + adverify setup.

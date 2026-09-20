@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+# Optional all-in-one image for a VPS. Render does not use this file.
 
 FROM node:22-alpine AS frontend
 WORKDIR /web
