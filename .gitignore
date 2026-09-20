@@ -1,0 +1,54 @@
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+backend/.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Local SQLite fallback (dev/tests only)
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Whisper / media artifacts
+backend/tmp/
+backend/storage/
+*.mp3
+*.wav
+*.mp4
+*.webm
+*.m4a
+
+# Alembic local noise
+backend/alembic/versions/__pycache__/

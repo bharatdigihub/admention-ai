@@ -1,0 +1,12 @@
+[
+  {
+    "start": 0.0,
+    "duration": 2.4,
+    "text": "This is a short local Whisper sample."
+  },
+  {
+    "start": 2.4,
+    "duration": 2.1,
+    "text": "Timestamps come from the transcript engine."
+  }
+]
