@@ -15,3 +15,4 @@ class AnalyzeVideoResponse(BaseModel):
     duration_seconds: int | None
     thumbnail_url: str | None
     transcript_status: str
+    transcript_error: str | None = None

@@ -31,11 +31,14 @@ class VideoAnalysisService:
             return response
 
         try:
-            video = self.transcript.ensure_transcript(video, force=False)
-        except TranscriptUnavailableError:
-            logger.info("No timestamped transcript available for %s", video.youtube_video_id)
+            video = self.transcript.ensure_transcript(video, force=True)
+        except TranscriptUnavailableError as exc:
+            logger.info("No timestamped transcript available for %s: %s", video.youtube_video_id, exc)
             video.transcript_status = "unavailable"
             self.youtube.repository.db.commit()
             self.youtube.repository.db.refresh(video)
+            response = YouTubeService.to_response(video)
+            response.transcript_error = str(exc)
+            return response
 
         return YouTubeService.to_response(video)

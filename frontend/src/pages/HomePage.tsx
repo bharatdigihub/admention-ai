@@ -199,6 +199,9 @@ function VideoCard({ video }: { video: AnalyzeVideoResponse }) {
             <div>
               <dt className="text-slate-500">Transcript</dt>
               <dd className="text-slate-200">{STATUS_LABELS[video.transcript_status] ?? video.transcript_status}</dd>
+              {video.transcript_error && (
+                <dd className="mt-1 text-xs text-amber-200">{video.transcript_error}</dd>
+              )}
             </div>
           </dl>
         </div>

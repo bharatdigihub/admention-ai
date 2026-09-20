@@ -11,8 +11,12 @@ function resolveApiBase(): string {
 }
 
 export const api = axios.create({
-  baseURL: resolveApiBase(),
   timeout: 120000,
+});
+
+api.interceptors.request.use((config) => {
+  config.baseURL = resolveApiBase();
+  return config;
 });
 
 export type HealthResponse = {
@@ -36,7 +40,15 @@ export type AnalyzeVideoResponse = {
   duration_seconds: number | null;
   thumbnail_url: string | null;
   transcript_status: string;
+  transcript_error?: string | null;
 };
+
+export async function analyzeVideo(youtubeUrl: string): Promise<AnalyzeVideoResponse> {
+  const response = await api.post<AnalyzeVideoResponse>("/api/videos/analyze", {
+    youtube_url: youtubeUrl,
+  });
+  return response.data;
+}
 
 export async function getVideoTranscript(videoId: string): Promise<{
   video_id: string;

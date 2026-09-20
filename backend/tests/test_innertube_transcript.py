@@ -6,6 +6,7 @@ from app.providers.caption_formats import parse_caption_body, parse_json3_captio
 from app.providers.innertube_transcript import (
     InnertubeTranscriptProvider,
     find_transcript_params,
+    find_visitor_data,
     parse_get_transcript_cues,
 )
 
@@ -87,6 +88,11 @@ def test_find_transcript_params() -> None:
         }
     )
     assert params == "abc123"
+
+
+def test_find_visitor_data() -> None:
+    visitor = find_visitor_data({"responseContext": {"visitorData": "CgtVisitor"}})
+    assert visitor == "CgtVisitor"
 
 
 def test_parse_get_transcript_cues() -> None:

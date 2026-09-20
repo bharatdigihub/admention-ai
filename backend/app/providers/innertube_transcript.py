@@ -13,6 +13,18 @@ logger = logging.getLogger(__name__)
 
 YOUTUBEI = "https://www.youtube.com/youtubei/v1"
 
+ANDROID_CLIENT = {
+    "clientName": "ANDROID",
+    "clientVersion": "19.44.38",
+    "androidSdkVersion": 30,
+    "osName": "Android",
+    "osVersion": "14",
+    "hl": "en",
+    "gl": "US",
+    "userAgent": "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip",
+    "clientNameId": "3",
+}
+
 WEB_CLIENT = {
     "clientName": "WEB",
     "clientVersion": "2.20250925.01.00",
@@ -67,6 +79,25 @@ def find_transcript_params(node: object) -> str | None:
     return None
 
 
+def find_visitor_data(node: object) -> str | None:
+    if isinstance(node, dict):
+        context = node.get("responseContext")
+        if isinstance(context, dict) and context.get("visitorData"):
+            return str(context["visitorData"])
+        if node.get("visitorData"):
+            return str(node["visitorData"])
+        for value in node.values():
+            found = find_visitor_data(value)
+            if found:
+                return found
+    elif isinstance(node, list):
+        for item in node:
+            found = find_visitor_data(item)
+            if found:
+                return found
+    return None
+
+
 def parse_get_transcript_cues(node: object) -> list[TranscriptCue]:
     cues: list[TranscriptCue] = []
 
@@ -104,10 +135,12 @@ class InnertubeTranscriptProvider:
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client
+        self._visitor: str | None = None
 
     def fetch(self, video_id: str) -> list[TranscriptCue]:
         client = self._client or httpx.Client(timeout=45.0, follow_redirects=True)
         owns_client = self._client is None
+        self._visitor = None
         try:
             cues = self._fetch_via_next(client, video_id)
             if cues:
@@ -135,31 +168,50 @@ class InnertubeTranscriptProvider:
         return cues
 
     def _fetch_via_next(self, client: httpx.Client, video_id: str) -> list[TranscriptCue]:
-        try:
-            next_body = self._post(
-                client,
-                f"{YOUTUBEI}/next?prettyPrint=false",
-                WEB_CLIENT,
-                {"videoId": video_id},
-                video_id,
-            )
-            params = find_transcript_params(next_body)
-            if not params:
-                logger.info("InnerTube next had no transcript params for %s", video_id)
-                return []
-            transcript_body = self._post(
-                client,
-                f"{YOUTUBEI}/get_transcript?prettyPrint=false",
-                WEB_CLIENT,
-                {"params": params},
-                video_id,
-            )
-            cues = parse_get_transcript_cues(transcript_body)
-            logger.info("InnerTube get_transcript returned %s cues for %s", len(cues), video_id)
-            return cues
-        except Exception as exc:
-            logger.info("InnerTube get_transcript path failed for %s: %s", video_id, exc)
-            return []
+        last_error: Exception | None = None
+        for client_config in (ANDROID_CLIENT, IOS_CLIENT, WEB_CLIENT):
+            try:
+                next_body = self._post(
+                    client,
+                    f"{YOUTUBEI}/next?prettyPrint=false",
+                    client_config,
+                    {"videoId": video_id},
+                    video_id,
+                )
+                self._remember_visitor(next_body)
+                params = find_transcript_params(next_body)
+                if not params:
+                    logger.info(
+                        "InnerTube %s next had no transcript params for %s",
+                        client_config["clientName"],
+                        video_id,
+                    )
+                    continue
+                for transcript_client in (WEB_CLIENT, client_config):
+                    transcript_body = self._post_transcript(
+                        client, transcript_client, params, video_id
+                    )
+                    cues = parse_get_transcript_cues(transcript_body)
+                    if cues:
+                        logger.info(
+                            "InnerTube get_transcript returned %s cues for %s via %s",
+                            len(cues),
+                            video_id,
+                            transcript_client["clientName"],
+                        )
+                        return cues
+            except Exception as exc:
+                last_error = exc
+                logger.info(
+                    "InnerTube %s get_transcript path failed for %s: %s",
+                    client_config["clientName"],
+                    video_id,
+                    exc,
+                )
+                continue
+        if last_error:
+            logger.info("InnerTube next/get_transcript exhausted for %s: %s", video_id, last_error)
+        return []
 
     def _post(
         self,
@@ -171,13 +223,47 @@ class InnertubeTranscriptProvider:
     ) -> dict:
         payload = self._player_payload(video_id, client_config)
         payload.update(extra)
-        response = client.post(url, json=payload, headers=_headers(client_config, video_id))
+        response = client.post(
+            url,
+            json=payload,
+            headers=_headers(client_config, video_id, self._visitor),
+        )
         response.raise_for_status()
-        return response.json()
+        body = response.json()
+        self._remember_visitor(body)
+        return body
+
+    def _post_transcript(
+        self,
+        client: httpx.Client,
+        client_config: dict,
+        params: str,
+        video_id: str,
+    ) -> dict:
+        skip = {"userAgent", "clientNameId"}
+        client_body = {key: value for key, value in client_config.items() if key not in skip}
+        payload = {
+            "context": {"client": client_body},
+            "params": params,
+        }
+        response = client.post(
+            f"{YOUTUBEI}/get_transcript?prettyPrint=false",
+            json=payload,
+            headers=_headers(client_config, video_id, self._visitor),
+        )
+        response.raise_for_status()
+        body = response.json()
+        self._remember_visitor(body)
+        return body
+
+    def _remember_visitor(self, body: dict) -> None:
+        visitor = find_visitor_data(body)
+        if visitor:
+            self._visitor = visitor
 
     def _caption_tracks(self, client: httpx.Client, video_id: str) -> list[dict]:
         last_error: Exception | None = None
-        for client_config in (IOS_CLIENT, TV_EMBED_CLIENT):
+        for client_config in (ANDROID_CLIENT, IOS_CLIENT, TV_EMBED_CLIENT):
             try:
                 body = self._post(
                     client,
@@ -251,27 +337,34 @@ class InnertubeTranscriptProvider:
 
     def _download_cues(self, client: httpx.Client, base_url: str) -> list[TranscriptCue]:
         json_url = _with_fmt(base_url, "json3")
-        response = client.get(json_url, headers=_headers(IOS_CLIENT))
+        response = client.get(json_url, headers=_headers(IOS_CLIENT, visitor=self._visitor))
         response.raise_for_status()
         cues = parse_caption_body(response.text)
         if cues:
             return cues
         xml_url = _with_fmt(base_url, "srv3")
-        xml_response = client.get(xml_url, headers=_headers(IOS_CLIENT))
+        xml_response = client.get(xml_url, headers=_headers(IOS_CLIENT, visitor=self._visitor))
         xml_response.raise_for_status()
         return parse_caption_body(xml_response.text)
 
 
-def _headers(client_config: dict, video_id: str | None = None) -> dict[str, str]:
+def _headers(
+    client_config: dict,
+    video_id: str | None = None,
+    visitor: str | None = None,
+) -> dict[str, str]:
     headers = {
         "Content-Type": "application/json",
         "User-Agent": client_config["userAgent"],
         "X-YouTube-Client-Name": client_config["clientNameId"],
         "X-YouTube-Client-Version": client_config["clientVersion"],
         "Origin": "https://www.youtube.com",
+        "Accept-Language": "en-US,en;q=0.9",
     }
     if video_id:
         headers["Referer"] = f"https://www.youtube.com/watch?v={video_id}"
+    if visitor:
+        headers["X-Goog-Visitor-Id"] = visitor
     return headers
 
 
