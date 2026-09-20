@@ -1,6 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +22,19 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 logger = logging.getLogger("admention")
+
+
+def _resolve_frontend_dist() -> Path | None:
+    here = Path(__file__).resolve()
+    candidates = [
+        Path("/app/frontend_dist"),
+        here.parents[1] / "frontend_dist",
+        here.parents[2] / "frontend" / "dist",
+    ]
+    for path in candidates:
+        if (path / "index.html").is_file():
+            return path
+    return None
 
 
 @asynccontextmanager
@@ -44,6 +59,13 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+_frontend_dist = _resolve_frontend_dist()
+if _frontend_dist is not None:
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+    logger.info("Serving frontend from %s", _frontend_dist)
 
 
 @app.exception_handler(AppError)

@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: admention-app
+    restart: unless-stopped
+    ports:
+      - "80:8000"
+    environment:
+      APP_ENV: production
+      DATABASE_URL: sqlite:////data/admention.db
+      BACKEND_CORS_ORIGINS: https://adverify.codewithbharat.dev,http://localhost
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+    volumes:
+      - admention_data:/data
+
+volumes:
+  admention_data:

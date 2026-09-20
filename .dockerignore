@@ -1,0 +1,16 @@
+.git
+.venv
+backend/.venv
+backend/.pytest_cache
+**/__pycache__
+**/*.pyc
+node_modules
+frontend/dist
+frontend/.vite
+*.db
+*.sqlite3
+.env
+deploy
+docs
+CURSOR_PROJECT.md
+**/.DS_Store

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AdMention AI — Track every advertiser mention</title>
+    <meta
+      name="description"
+      content="AdMention AI finds advertiser mentions in YouTube transcripts and opens the exact timestamp."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0b1220;
+        --card: #111827;
+        --line: #1e293b;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --sky: #38bdf8;
+        --emerald: #34d399;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 32%),
+          var(--bg);
+        color: var(--text);
+        font-family: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+      }
+      main { max-width: 980px; margin: 0 auto; padding: 48px 20px 80px; }
+      .kicker {
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--sky);
+        font-size: 12px;
+        margin: 0 0 12px;
+      }
+      h1 { font-size: clamp(36px, 6vw, 56px); margin: 0 0 12px; }
+      .lede { max-width: 640px; color: var(--muted); font-size: 18px; line-height: 1.6; }
+      .card {
+        margin-top: 28px;
+        background: rgba(17, 24, 39, 0.88);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 24px;
+      }
+      .grid { display: grid; gap: 14px; }
+      @media (min-width: 800px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+      h2 { margin: 0 0 10px; font-size: 22px; }
+      p, li { color: var(--muted); line-height: 1.6; }
+      ol, ul { margin: 0; padding-left: 18px; }
+      .flow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        color: var(--text);
+        font-weight: 600;
+      }
+      .flow span {
+        background: #0f172a;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 8px 12px;
+      }
+      .pill {
+        display: inline-block;
+        margin-top: 18px;
+        background: rgba(52, 211, 153, 0.12);
+        color: var(--emerald);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+      a { color: var(--sky); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="kicker">Sports media ops · Portfolio demo</p>
+      <h1>AdMention AI</h1>
+      <p class="lede">
+        Track every advertiser mention, automatically. Paste a YouTube URL, search an advertiser,
+        and jump to the exact second it was said.
+      </p>
+      <p class="pill">Live showcase · full analyzer runs locally during development</p>
+
+      <section class="card">
+        <h2>What a user gets</h2>
+        <ol>
+          <li>Paste a YouTube video URL and pull the show title, channel, and transcript.</li>
+          <li>Search an advertiser such as Feldman Automotive, including aliases like Feldman.</li>
+          <li>See every real mention with surrounding context, confidence, and timestamp.</li>
+          <li>One click opens YouTube at that second — no scrubbing a long live show.</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>How it works</h2>
+        <div class="flow">
+          <span>YouTube URL</span>
+          <span>Video metadata</span>
+          <span>Timestamped transcript</span>
+          <span>Advertiser match</span>
+          <span>Context + watch link</span>
+        </div>
+      </section>
+
+      <div class="grid two">
+        <section class="card">
+          <h2>Stack</h2>
+          <p>React, TypeScript, Vite, Tailwind, FastAPI, SQLAlchemy, SQLite/PostgreSQL, yt-dlp captions.</p>
+        </section>
+        <section class="card">
+          <h2>Status</h2>
+          <p>
+            Phases 1–8 are complete: URL analysis, transcripts, advertisers, mention search, context,
+            and timestamp links. This public page is the portfolio face of the project.
+          </p>
+          <p><a href="https://codewithbharat.dev/">Back to codewithbharat.dev</a></p>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

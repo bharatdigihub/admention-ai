@@ -1,7 +1,17 @@
 import axios from "axios";
 
+function resolveApiBase(): string {
+  if (import.meta.env.DEV) {
+    return (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined" && window.__API_BASE__) {
+    return window.__API_BASE__.replace(/\/$/, "");
+  }
+  return (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+}
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "",
+  baseURL: resolveApiBase(),
   timeout: 120000,
 });
 
