@@ -4,6 +4,7 @@ import httpx
 from yt_dlp import YoutubeDL
 
 from app.core.exceptions import TranscriptUnavailableError
+from app.providers.caption_formats import parse_json3_captions
 from app.providers.transcript import TranscriptCue
 
 
@@ -18,7 +19,7 @@ class YtDlpTranscriptProvider:
     def fetch(self, video_id: str) -> list[TranscriptCue]:
         try:
             caption_url = self._caption_url(video_id)
-            client = self._client or httpx.Client(timeout=30.0)
+            client = self._client or httpx.Client(timeout=30.0, follow_redirects=True)
             owns_client = self._client is None
             try:
                 response = client.get(caption_url)
@@ -34,7 +35,7 @@ class YtDlpTranscriptProvider:
                 "A timestamped YouTube transcript is not available for this video."
             ) from exc
 
-        cues = self._parse_json3(payload)
+        cues = parse_json3_captions(payload)
         if not cues:
             raise TranscriptUnavailableError("The YouTube transcript was empty.")
         return cues
@@ -45,6 +46,17 @@ class YtDlpTranscriptProvider:
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["ios", "android", "tv_embedded", "web"],
+                }
+            },
+            "http_headers": {
+                "User-Agent": (
+                    "com.google.ios.youtube/20.10.38 "
+                    "(iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X)"
+                ),
+            },
         }
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
@@ -69,20 +81,8 @@ class YtDlpTranscriptProvider:
             for track in tracks or []:
                 if track.get("ext") == "json3" and track.get("url"):
                     return track
+        for tracks in tracks_by_lang.values():
+            for track in tracks or []:
+                if track.get("ext") == "json3" and track.get("url"):
+                    return track
         return None
-
-    def _parse_json3(self, payload: dict) -> list[TranscriptCue]:
-        cues: list[TranscriptCue] = []
-        for event in payload.get("events") or []:
-            text = "".join(seg.get("utf8") or "" for seg in event.get("segs") or [])
-            text = " ".join(text.replace("\n", " ").split())
-            if not text:
-                continue
-            cues.append(
-                TranscriptCue(
-                    start=float(event.get("tStartMs") or 0) / 1000.0,
-                    duration=float(event.get("dDurationMs") or 0) / 1000.0,
-                    text=text,
-                )
-            )
-        return cues

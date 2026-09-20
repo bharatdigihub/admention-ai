@@ -209,6 +209,7 @@ def test_default_provider_chain_ends_with_whisper(db) -> None:
     assert [provider.name for provider in service.providers] == [
         "youtube",
         "youtube",
+        "youtube",
         "fixture",
         "whisper",
     ]

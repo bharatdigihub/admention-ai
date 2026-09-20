@@ -19,7 +19,7 @@ class YouTubeTranscriptProvider:
 
     def fetch(self, video_id: str) -> list[TranscriptCue]:
         try:
-            fetched = self._api.fetch(video_id, languages=("en", "en-US", "en-GB"))
+            fetched = self._fetch_cues(video_id)
         except CouldNotRetrieveTranscript as exc:
             logger.info("YouTube captions unavailable for %s: %s", video_id, exc)
             raise TranscriptUnavailableError(
@@ -38,6 +38,20 @@ class YouTubeTranscriptProvider:
         if not cues:
             raise TranscriptUnavailableError("The YouTube transcript was empty.")
         return cues
+
+    def _fetch_cues(self, video_id: str):
+        try:
+            return self._api.fetch(video_id, languages=("en", "en-US", "en-GB", "en-orig"))
+        except CouldNotRetrieveTranscript:
+            if not hasattr(self._api, "list"):
+                raise
+            transcript_list = self._api.list(video_id)
+            for transcript in transcript_list:
+                try:
+                    return transcript.fetch()
+                except Exception:
+                    continue
+            raise
 
 
 def get_youtube_transcript_provider() -> TranscriptProvider:

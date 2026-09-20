@@ -6,6 +6,7 @@ from app.core.exceptions import TranscriptUnavailableError, VideoNotFoundError
 from app.models.transcript import TranscriptSegment
 from app.models.video import Video
 from app.providers.fixture_transcript import LocalFixtureTranscriptProvider
+from app.providers.innertube_transcript import InnertubeTranscriptProvider
 from app.providers.transcript import TranscriptCue, TranscriptProvider
 from app.providers.whisper_transcript import WhisperTranscriptProvider
 from app.providers.youtube_transcript import YouTubeTranscriptProvider
@@ -29,6 +30,7 @@ class TranscriptService:
         self.videos = VideoRepository(db)
         self.segments = TranscriptRepository(db)
         self.providers = providers or [
+            InnertubeTranscriptProvider(),
             YouTubeTranscriptProvider(),
             YtDlpTranscriptProvider(),
             LocalFixtureTranscriptProvider(),
