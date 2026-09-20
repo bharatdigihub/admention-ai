@@ -93,6 +93,7 @@ class TranscriptService:
         last_error: Exception | None = None
         used_provider: TranscriptProvider | None = None
         cues: list[TranscriptCue] = []
+        errors: list[str] = []
 
         for provider in self.providers:
             try:
@@ -104,6 +105,7 @@ class TranscriptService:
             except TranscriptUnavailableError as exc:
                 logger.info("Transcript provider %s unavailable for %s: %s", provider.name, video.youtube_video_id, exc)
                 last_error = exc
+                errors.append(str(exc))
                 continue
             except Exception as exc:
                 logger.exception("Transcript provider %s failed for %s", provider.name, video.youtube_video_id)
@@ -111,15 +113,19 @@ class TranscriptService:
                     "A timestamped transcript is not available for this video."
                 )
                 last_error.__cause__ = exc
+                errors.append(f"{provider.name}: {exc}")
                 continue
 
         if used_provider is None or not cues:
             video.transcript_status = "unavailable"
             self.db.commit()
             self.db.refresh(video)
-            if last_error:
-                raise last_error
-            raise TranscriptUnavailableError("A timestamped transcript is not available for this video.")
+            skip = ("Whisper fallback is disabled", "No local transcript fixture")
+            meaningful = [item for item in errors if not any(token in item for token in skip)]
+            message = "; ".join(meaningful[:3]) if meaningful else (str(last_error) if last_error else "")
+            raise TranscriptUnavailableError(
+                message or "A timestamped transcript is not available for this video."
+            )
 
         self.segments.replace_for_video(video, cues)
         if used_provider.name == "whisper":

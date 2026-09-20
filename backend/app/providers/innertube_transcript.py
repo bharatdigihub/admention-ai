@@ -59,6 +59,21 @@ TV_EMBED_CLIENT = {
     "clientNameId": "85",
 }
 
+CHROME_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+WEB_EMBEDDED_CLIENT = {
+    "clientName": "WEB_EMBEDDED_PLAYER",
+    "clientVersion": "1.20240920.01.00",
+    "clientScreen": "EMBED",
+    "hl": "en",
+    "gl": "US",
+    "userAgent": CHROME_UA,
+    "clientNameId": "56",
+}
+
 PREFERRED_LANGS = ("en", "en-US", "en-GB", "en-orig", "a.en")
 
 
@@ -145,13 +160,13 @@ class InnertubeTranscriptProvider:
             cues = self._fetch_via_next(client, video_id)
             if cues:
                 return cues
-            tracks = self._caption_tracks(client, video_id)
+            tracks, player_client = self._caption_tracks(client, video_id)
             track = self._pick_track(tracks)
             if track is None:
                 raise TranscriptUnavailableError(
-                    "A timestamped YouTube transcript is not available for this video."
+                    "YouTube InnerTube did not return caption tracks for this video."
                 )
-            cues = self._download_cues(client, str(track["baseUrl"]))
+            cues = self._download_cues(client, str(track["baseUrl"]), video_id, player_client)
         except TranscriptUnavailableError:
             raise
         except Exception as exc:
@@ -261,9 +276,10 @@ class InnertubeTranscriptProvider:
         if visitor:
             self._visitor = visitor
 
-    def _caption_tracks(self, client: httpx.Client, video_id: str) -> list[dict]:
+    def _caption_tracks(self, client: httpx.Client, video_id: str) -> tuple[list[dict], dict]:
         last_error: Exception | None = None
-        for client_config in (ANDROID_CLIENT, IOS_CLIENT, TV_EMBED_CLIENT):
+        last_status = None
+        for client_config in (WEB_EMBEDDED_CLIENT, ANDROID_CLIENT, IOS_CLIENT, TV_EMBED_CLIENT):
             try:
                 body = self._post(
                     client,
@@ -285,13 +301,13 @@ class InnertubeTranscriptProvider:
                         len(tracks),
                         video_id,
                     )
-                    return tracks
-                status = (body.get("playabilityStatus") or {}).get("status")
+                    return tracks, client_config
+                last_status = (body.get("playabilityStatus") or {}).get("status")
                 logger.info(
                     "InnerTube %s had no caption tracks for %s (playability=%s)",
                     client_config["clientName"],
                     video_id,
-                    status,
+                    last_status,
                 )
             except Exception as exc:
                 last_error = exc
@@ -303,8 +319,12 @@ class InnertubeTranscriptProvider:
                 )
                 continue
         if last_error:
-            raise last_error
-        return []
+            raise TranscriptUnavailableError(
+                f"YouTube player API failed from this host: {last_error}"
+            ) from last_error
+        raise TranscriptUnavailableError(
+            f"YouTube player API returned no caption tracks (playability={last_status})."
+        )
 
     def _player_payload(self, video_id: str, client_config: dict) -> dict:
         skip = {"userAgent", "clientNameId"}
@@ -315,7 +335,7 @@ class InnertubeTranscriptProvider:
             "contentCheckOk": True,
             "racyCheckOk": True,
         }
-        if client_config["clientName"] == "TVHTML5_SIMPLY_EMBEDDED_PLAYER":
+        if client_config["clientName"] in {"TVHTML5_SIMPLY_EMBEDDED_PLAYER", "WEB_EMBEDDED_PLAYER"}:
             payload["context"]["thirdParty"] = {"embedUrl": "https://www.youtube.com/"}
         return payload
 
@@ -335,17 +355,32 @@ class InnertubeTranscriptProvider:
                 return track
         return None
 
-    def _download_cues(self, client: httpx.Client, base_url: str) -> list[TranscriptCue]:
+    def _download_cues(
+        self,
+        client: httpx.Client,
+        base_url: str,
+        video_id: str,
+        client_config: dict,
+    ) -> list[TranscriptCue]:
         json_url = _with_fmt(base_url, "json3")
-        response = client.get(json_url, headers=_headers(IOS_CLIENT, visitor=self._visitor))
-        response.raise_for_status()
+        response = client.get(json_url, headers=_headers(client_config, video_id, self._visitor))
+        if response.status_code >= 400:
+            raise TranscriptUnavailableError(
+                f"YouTube caption file returned HTTP {response.status_code}."
+            )
         cues = parse_caption_body(response.text)
         if cues:
             return cues
         xml_url = _with_fmt(base_url, "srv3")
-        xml_response = client.get(xml_url, headers=_headers(IOS_CLIENT, visitor=self._visitor))
-        xml_response.raise_for_status()
-        return parse_caption_body(xml_response.text)
+        xml_response = client.get(xml_url, headers=_headers(client_config, video_id, self._visitor))
+        if xml_response.status_code >= 400:
+            raise TranscriptUnavailableError(
+                f"YouTube caption file returned HTTP {xml_response.status_code}."
+            )
+        cues = parse_caption_body(xml_response.text)
+        if not cues:
+            raise TranscriptUnavailableError("YouTube caption file was empty.")
+        return cues
 
 
 def _headers(
@@ -362,7 +397,7 @@ def _headers(
         "Accept-Language": "en-US,en;q=0.9",
     }
     if video_id:
-        headers["Referer"] = f"https://www.youtube.com/watch?v={video_id}"
+        headers["Referer"] = f"https://www.youtube.com/embed/{video_id}"
     if visitor:
         headers["X-Goog-Visitor-Id"] = visitor
     return headers
