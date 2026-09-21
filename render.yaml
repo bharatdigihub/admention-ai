@@ -18,3 +18,13 @@ services:
         value: https://adverify.codewithbharat.dev
       - key: YOUTUBE_API_KEY
         sync: false
+      # Logging — INFO shows every provider attempt in Render logs
+      - key: LOG_LEVEL
+        value: INFO
+      # Whisper fallback — set WHISPER_ENABLED=true + WHISPER_PROVIDER=mock
+      # in Render dashboard to enable the built-in mock fallback when YouTube
+      # blocks all network providers from this server IP.
+      - key: WHISPER_ENABLED
+        value: "false"
+      - key: WHISPER_PROVIDER
+        value: mock

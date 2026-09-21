@@ -239,3 +239,59 @@ def test_youtube_transcript_provider_maps_missing_captions() -> None:
     provider = YouTubeTranscriptProvider(api=BoomApi())
     with pytest.raises(TranscriptUnavailableError):
         provider.fetch("dQw4w9WgXcQ")
+
+
+def test_ensure_transcript_error_includes_provider_name_and_exception_type(db) -> None:
+    """When all providers fail, the raised error must name the provider and exception class."""
+    video = _video(db)
+    service = TranscriptService(
+        db,
+        providers=[
+            FakeProvider("innertube", TranscriptUnavailableError("HTTP 403 IP block")),
+            FakeProvider("youtube", TranscriptUnavailableError("RequestBlocked")),
+        ],
+    )
+
+    with pytest.raises(TranscriptUnavailableError) as exc_info:
+        service.ensure_transcript(video)
+
+    # The error message must include the meaningful failures, not a generic string.
+    error_text = str(exc_info.value)
+    assert "innertube" in error_text or "youtube" in error_text or "HTTP 403" in error_text or "RequestBlocked" in error_text
+
+
+def test_ensure_transcript_error_message_not_generic_when_all_fail(db) -> None:
+    """The final error must not be a plain generic string when there is real failure info."""
+    video = _video(db)
+    service = TranscriptService(
+        db,
+        providers=[
+            FakeProvider("innertube", TranscriptUnavailableError("YouTube blocked server IP (HTTP 403)")),
+        ],
+    )
+
+    with pytest.raises(TranscriptUnavailableError) as exc_info:
+        service.ensure_transcript(video)
+
+    # The real error reason must be present in the raised message.
+    assert "HTTP 403" in str(exc_info.value) or "innertube" in str(exc_info.value)
+
+
+def test_youtube_transcript_provider_exposes_exception_class_in_error() -> None:
+    """YouTubeTranscriptProvider must include the exception class name in the error message."""
+    from youtube_transcript_api._errors import CouldNotRetrieveTranscript
+
+    class FakeApi:
+        def fetch(self, video_id: str, languages: tuple[str, ...]):
+            raise CouldNotRetrieveTranscript(video_id)
+
+        def list(self, video_id: str):
+            raise CouldNotRetrieveTranscript(video_id)
+
+    provider = YouTubeTranscriptProvider(api=FakeApi())
+
+    with pytest.raises(TranscriptUnavailableError) as exc_info:
+        provider.fetch("dQw4w9WgXcQ")
+
+    # The exception class from youtube-transcript-api must appear in the message.
+    assert "CouldNotRetrieveTranscript" in str(exc_info.value)

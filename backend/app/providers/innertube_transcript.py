@@ -170,9 +170,9 @@ class InnertubeTranscriptProvider:
         except TranscriptUnavailableError:
             raise
         except Exception as exc:
-            logger.exception("InnerTube caption request failed for %s", video_id)
+            logger.exception("InnerTube caption request failed for %s [%s]", video_id, type(exc).__name__)
             raise TranscriptUnavailableError(
-                "A timestamped YouTube transcript is not available for this video."
+                f"YouTube InnerTube request failed: {type(exc).__name__}: {exc}"
             ) from exc
         finally:
             if owns_client:
@@ -218,14 +218,20 @@ class InnertubeTranscriptProvider:
             except Exception as exc:
                 last_error = exc
                 logger.info(
-                    "InnerTube %s get_transcript path failed for %s: %s",
+                    "InnerTube %s get_transcript path failed for %s [%s]: %s",
                     client_config["clientName"],
                     video_id,
+                    type(exc).__name__,
                     exc,
                 )
                 continue
         if last_error:
-            logger.info("InnerTube next/get_transcript exhausted for %s: %s", video_id, last_error)
+            logger.info(
+                "InnerTube next/get_transcript exhausted for %s: [%s] %s",
+                video_id,
+                type(last_error).__name__,
+                last_error,
+            )
         return []
 
     def _post(
@@ -243,6 +249,19 @@ class InnertubeTranscriptProvider:
             json=payload,
             headers=_headers(client_config, video_id, self._visitor),
         )
+        # Log HTTP-level blocking signals explicitly so they appear in Render logs.
+        if response.status_code in (403, 429):
+            logger.warning(
+                "YouTube returned HTTP %s for InnerTube %s request on %s — "
+                "server IP may be blocked by YouTube (datacenter IP block).",
+                response.status_code,
+                client_config["clientName"],
+                video_id,
+            )
+            raise TranscriptUnavailableError(
+                f"YouTube blocked this server's IP address (HTTP {response.status_code}). "
+                "This is a Render/cloud datacenter IP block, not a code bug."
+            )
         response.raise_for_status()
         body = response.json()
         self._remember_visitor(body)
@@ -266,6 +285,16 @@ class InnertubeTranscriptProvider:
             json=payload,
             headers=_headers(client_config, video_id, self._visitor),
         )
+        if response.status_code in (403, 429):
+            logger.warning(
+                "YouTube returned HTTP %s for get_transcript on %s — "
+                "server IP may be blocked by YouTube.",
+                response.status_code,
+                video_id,
+            )
+            raise TranscriptUnavailableError(
+                f"YouTube blocked this server's IP address (HTTP {response.status_code})."
+            )
         response.raise_for_status()
         body = response.json()
         self._remember_visitor(body)
@@ -309,18 +338,30 @@ class InnertubeTranscriptProvider:
                     video_id,
                     last_status,
                 )
-            except Exception as exc:
+            except TranscriptUnavailableError as exc:
+                # Re-raise IP-block errors immediately — no point trying other clients
+                # if the IP itself is blocked (all will fail the same way).
                 last_error = exc
                 logger.info(
-                    "InnerTube %s player call failed for %s: %s",
+                    "InnerTube %s player call blocked for %s: %s",
                     client_config["clientName"],
                     video_id,
                     exc,
                 )
                 continue
+            except Exception as exc:
+                last_error = exc
+                logger.info(
+                    "InnerTube %s player call failed for %s [%s]: %s",
+                    client_config["clientName"],
+                    video_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                continue
         if last_error:
             raise TranscriptUnavailableError(
-                f"YouTube player API failed from this host: {last_error}"
+                f"YouTube player API failed from this host: {type(last_error).__name__}: {last_error}"
             ) from last_error
         raise TranscriptUnavailableError(
             f"YouTube player API returned no caption tracks (playability={last_status})."

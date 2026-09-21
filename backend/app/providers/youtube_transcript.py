@@ -21,14 +21,25 @@ class YouTubeTranscriptProvider:
         try:
             fetched = self._fetch_cues(video_id)
         except CouldNotRetrieveTranscript as exc:
-            logger.info("YouTube captions unavailable for %s: %s", video_id, exc)
+            # Log the specific error class from youtube-transcript-api (e.g. IpAddressBlocked,
+            # RequestBlocked, TooManyRequests) so Render logs show the real cause.
+            logger.info(
+                "YouTube captions unavailable for %s [%s]: %s",
+                video_id,
+                type(exc).__name__,
+                exc,
+            )
             raise TranscriptUnavailableError(
-                "A timestamped YouTube transcript is not available for this video."
+                f"youtube-transcript-api [{type(exc).__name__}]: {exc}"
             ) from exc
         except Exception as exc:
-            logger.exception("YouTube caption request failed for %s", video_id)
+            logger.exception(
+                "YouTube caption request failed for %s [%s]",
+                video_id,
+                type(exc).__name__,
+            )
             raise TranscriptUnavailableError(
-                "A timestamped YouTube transcript is not available for this video."
+                f"youtube-transcript-api unexpected error [{type(exc).__name__}]: {exc}"
             ) from exc
 
         cues = [

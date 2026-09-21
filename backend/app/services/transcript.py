@@ -87,13 +87,18 @@ class TranscriptService:
     def ensure_transcript(self, video: Video, force: bool = False) -> Video:
         existing = self.segments.list_for_video(video)
         if existing and not force and video.transcript_status in {"available", "whisper", "fixture"}:
-            logger.info("Skipping transcript fetch for %s; %s segments already stored", video.youtube_video_id, len(existing))
+            logger.info(
+                "Skipping transcript fetch for %s; %s segments already stored",
+                video.youtube_video_id,
+                len(existing),
+            )
             return video
 
         last_error: Exception | None = None
         used_provider: TranscriptProvider | None = None
         cues: list[TranscriptCue] = []
-        errors: list[str] = []
+        # Collect (provider_name, exception_type, message) tuples for every failure.
+        error_details: list[str] = []
 
         for provider in self.providers:
             try:
@@ -103,28 +108,52 @@ class TranscriptService:
                 used_provider = provider
                 break
             except TranscriptUnavailableError as exc:
-                logger.info("Transcript provider %s unavailable for %s: %s", provider.name, video.youtube_video_id, exc)
+                # Log the real exception type so Render logs are actionable.
+                logger.info(
+                    "Transcript provider %s skipped for %s [%s]: %s",
+                    provider.name,
+                    video.youtube_video_id,
+                    type(exc).__name__,
+                    exc,
+                )
                 last_error = exc
-                errors.append(str(exc))
+                error_details.append(f"{provider.name}({type(exc).__name__}): {exc}")
                 continue
             except Exception as exc:
-                logger.exception("Transcript provider %s failed for %s", provider.name, video.youtube_video_id)
-                last_error = TranscriptUnavailableError(
-                    "A timestamped transcript is not available for this video."
+                # Unexpected failure — log the full traceback so we see the real cause.
+                logger.exception(
+                    "Transcript provider %s raised unexpected error for %s [%s]",
+                    provider.name,
+                    video.youtube_video_id,
+                    type(exc).__name__,
                 )
-                last_error.__cause__ = exc
-                errors.append(f"{provider.name}: {exc}")
+                wrapped = TranscriptUnavailableError(
+                    f"{provider.name} failed unexpectedly: {type(exc).__name__}: {exc}"
+                )
+                wrapped.__cause__ = exc
+                last_error = wrapped
+                error_details.append(f"{provider.name}({type(exc).__name__}): {exc}")
                 continue
 
         if used_provider is None or not cues:
             video.transcript_status = "unavailable"
             self.db.commit()
             self.db.refresh(video)
-            skip = ("Whisper fallback is disabled", "No local transcript fixture")
-            meaningful = [item for item in errors if not any(token in item for token in skip)]
-            message = "; ".join(meaningful[:3]) if meaningful else (str(last_error) if last_error else "")
+
+            # Build a message that includes every provider's real failure reason.
+            # Filter out noise-only messages (fixture/Whisper "not configured").
+            noise_tokens = ("Whisper fallback is disabled", "No local transcript fixture")
+            meaningful = [d for d in error_details if not any(t in d for t in noise_tokens)]
+            summary = "; ".join(meaningful[:3]) if meaningful else (str(last_error) if last_error else "")
+
+            logger.error(
+                "All transcript providers exhausted for %s. Failures: %s",
+                video.youtube_video_id,
+                " | ".join(error_details) if error_details else "none",
+            )
+
             raise TranscriptUnavailableError(
-                message or "A timestamped transcript is not available for this video."
+                summary or "A timestamped transcript is not available for this video."
             )
 
         self.segments.replace_for_video(video, cues)
