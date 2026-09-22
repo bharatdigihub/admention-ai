@@ -2,11 +2,13 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.exceptions import TranscriptUnavailableError, VideoNotFoundError
 from app.models.transcript import TranscriptSegment
 from app.models.video import Video
 from app.providers.caption_mirror import CaptionMirrorTranscriptProvider
 from app.providers.fixture_transcript import LocalFixtureTranscriptProvider
+from app.providers.hostinger_proxy import HostingerCaptionProxyProvider
 from app.providers.innertube_transcript import InnertubeTranscriptProvider
 from app.providers.transcript import TranscriptCue, TranscriptProvider, is_youtube_ip_block
 from app.providers.whisper_transcript import WhisperTranscriptProvider
@@ -30,14 +32,7 @@ class TranscriptService:
         self.db = db
         self.videos = VideoRepository(db)
         self.segments = TranscriptRepository(db)
-        self.providers = providers or [
-            InnertubeTranscriptProvider(),
-            YouTubeTranscriptProvider(),
-            YtDlpTranscriptProvider(),
-            CaptionMirrorTranscriptProvider(),
-            LocalFixtureTranscriptProvider(),
-            WhisperTranscriptProvider(),
-        ]
+        self.providers = providers if providers is not None else default_transcript_providers()
 
     def normalize(self, cues: list[TranscriptCue]) -> list[TranscriptCue]:
         normalized: list[TranscriptCue] = []
@@ -206,3 +201,32 @@ class TranscriptService:
             video.youtube_video_id,
         )
         return self.get_transcript(youtube_video_id)
+
+
+def default_transcript_providers() -> list[TranscriptProvider]:
+    """Direct YouTube first locally; Hostinger PHP first on Render (blocked cloud IP)."""
+    settings = get_settings()
+    direct = [
+        InnertubeTranscriptProvider(),
+        YouTubeTranscriptProvider(),
+        YtDlpTranscriptProvider(),
+    ]
+    hostinger = HostingerCaptionProxyProvider()
+    mirrors = [CaptionMirrorTranscriptProvider()]
+    tail = [
+        LocalFixtureTranscriptProvider(),
+        WhisperTranscriptProvider(),
+    ]
+    if prefer_hostinger_caption_proxy(settings):
+        return [hostinger, *mirrors, *direct, *tail]
+    return [*direct, hostinger, *mirrors, *tail]
+
+
+def prefer_hostinger_caption_proxy(settings=None) -> bool:
+    settings = settings or get_settings()
+    return (
+        settings.app_env == "production"
+        and not settings.proxy_url
+        and not settings.has_webshare
+        and bool(settings.caption_proxy_url.strip())
+    )

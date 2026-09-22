@@ -10,9 +10,12 @@ _IP_BLOCK_MARKERS = (
     "requestblocked",
     "ipblocked",
     "blocked this server",
+    "blocked this host",
     "datacenter ip",
     "ip address blocked",
     "too many requests",
+    "login_required",
+    "signinconfirm",
 )
 
 

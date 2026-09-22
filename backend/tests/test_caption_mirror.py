@@ -114,3 +114,26 @@ def test_caption_mirror_unavailable_when_all_hosts_fail() -> None:
             invidious_bases=["https://inv.example.test"],
             piped_bases=["https://piped.example.test"],
         ).fetch("dQw4w9WgXcQ")
+
+
+def test_caption_mirror_skips_piped_bot_check_json() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/api/v1/captions/" in str(request.url):
+            return httpx.Response(503, text="down")
+        return httpx.Response(
+            200,
+            json={
+                "error": "org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException: blocked",
+                "message": 'YouTube probably temporarily blocked anonymous watch access with this IP , got error LOGIN_REQUIRED: "Sign in to confirm that you\'re not a bot"',
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(TranscriptUnavailableError, match="bot-check") as exc_info:
+        CaptionMirrorTranscriptProvider(
+            client=client,
+            invidious_bases=["https://inv.example.test"],
+            piped_bases=["https://piped.example.test"],
+        ).fetch("dQw4w9WgXcQ")
+    assert "org.schabi" not in str(exc_info.value)
+    assert "at org." not in str(exc_info.value)

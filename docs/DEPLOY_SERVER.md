@@ -12,11 +12,15 @@ The React app calls the Render API. CORS on the backend allows `https://adverify
 Repo: [github.com/bharatdigihub/admention-ai](https://github.com/bharatdigihub/admention-ai)
 
 ```text
-Browser  →  https://adverify.codewithbharat.dev   (static React on Hostinger)
+Browser  →  https://adverify.codewithbharat.dev   (React + caption-proxy.php)
                  │
                  │  fetch /api/...
                  ▼
-            Render Python  (FastAPI + SQLite)
+            Render Python  (FastAPI)
+                 │
+                 │  GET caption-proxy.php?v=VIDEO_ID
+                 ▼
+            Hostinger PHP  →  YouTube InnerTube
 ```
 
 ---
@@ -48,13 +52,14 @@ If Blueprint asks for a card, skip it and create a **Web Service** instead:
    | `APP_ENV` | `production` |
    | `DATABASE_URL` | `sqlite:///./admention.db` |
    | `BACKEND_CORS_ORIGINS` | `https://adverify.codewithbharat.dev` |
+   | `CAPTION_PROXY_URL` | `https://adverify.codewithbharat.dev/caption-proxy.php` |
    | `YOUTUBE_API_KEY` | optional |
 
 5. Deploy, then open `https://YOUR-SERVICE.onrender.com/api/health`. You should see `{"status":"ok"}`.
 
 Free Render services sleep when idle. The first request after sleep can take about a minute. SQLite on the free plan is wiped on each new deploy unless you attach a disk.
 
-If YouTube captions fail from Render, the API falls back to public caption mirrors (Invidious/Piped). That is usually a datacenter IP block of youtube.com itself, not a frontend bug.
+If YouTube captions fail from Render, the API calls Hostinger `caption-proxy.php` first (YouTube sees Hostinger's IP, not Render's). Upload that PHP file with the React build or Analyze will stay unavailable.
 
 ---
 
@@ -83,6 +88,7 @@ Upload **everything inside** `frontend/dist/` to Hostinger FTP folder `/adverify
 
 - `index.html`
 - `config.js` (with the real Render URL)
+- `caption-proxy.php` (fetches YouTube captions from Hostinger when Render is blocked)
 - `.htaccess` (SPA routing)
 - `assets/`
 
@@ -92,9 +98,10 @@ Keep Hostinger DNS on the shared host. Do **not** CNAME `adverify` to Render; on
 
 ## 4. Check the live app
 
-1. `https://YOUR-SERVICE.onrender.com/api/health` → `{"status":"ok"}`
-2. [https://adverify.codewithbharat.dev](https://adverify.codewithbharat.dev/) → dashboard
-3. Analyze a YouTube URL and search an advertiser
+1. `https://YOUR-SERVICE.onrender.com/api/health` → `{"status":"ok","caption_engine":"caption-proxy-v5"}`
+2. `https://adverify.codewithbharat.dev/caption-proxy.php?v=dQw4w9WgXcQ` → JSON with `segments`
+3. [https://adverify.codewithbharat.dev](https://adverify.codewithbharat.dev/) → dashboard
+4. Analyze a YouTube URL; transcript should become available, then search an advertiser
 
 If the UI says the backend is unavailable, wait for Render to wake, then confirm `config.js` matches the Render URL.
 

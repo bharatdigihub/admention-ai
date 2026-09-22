@@ -15,11 +15,31 @@ import { fetchMirrorCues } from "../lib/captions";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Loading transcript...",
+  recovering: "Retrying captions via Hostinger...",
   available: "YouTube transcript available",
   fixture: "Local development transcript fixture",
   whisper: "Transcript generated with Whisper fallback",
   unavailable: "Transcript unavailable",
 };
+
+function friendlyTranscriptError(raw?: string | null): string | null {
+  if (!raw || !raw.trim()) {
+    return null;
+  }
+  const text = raw.toLowerCase();
+  if (
+    text.includes("not a bot") ||
+    text.includes("login_required") ||
+    text.includes("signinconfirm") ||
+    text.includes("org.schabi")
+  ) {
+    return "YouTube is temporarily blocking this caption host (bot check).";
+  }
+  if (raw.length > 280 || raw.includes("\tat ")) {
+    return "Public caption hosts are blocked for this video right now.";
+  }
+  return raw;
+}
 
 export function HomePage() {
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -53,8 +73,9 @@ export function HomePage() {
           ...data,
           transcript_status: "unavailable",
           transcript_error:
-            data.transcript_error ||
-            getApiErrorMessage(error, "Transcript unavailable from this cloud host."),
+            friendlyTranscriptError(data.transcript_error) ||
+            friendlyTranscriptError(getApiErrorMessage(error, "")) ||
+            "YouTube is blocking caption hosts for this video right now.",
         });
       } finally {
         setRecoveringTranscript(false);
@@ -152,7 +173,9 @@ export function HomePage() {
       {video && (
         <VideoCard
           video={
-            recoveringTranscript ? { ...video, transcript_status: "pending", transcript_error: null } : video
+            recoveringTranscript
+              ? { ...video, transcript_status: "recovering", transcript_error: null }
+              : video
           }
         />
       )}
@@ -229,8 +252,8 @@ function VideoCard({ video }: { video: AnalyzeVideoResponse }) {
             <div>
               <dt className="text-slate-500">Transcript</dt>
               <dd className="text-slate-200">{STATUS_LABELS[video.transcript_status] ?? video.transcript_status}</dd>
-              {video.transcript_error && (
-                <dd className="mt-1 text-xs text-amber-200">{video.transcript_error}</dd>
+              {friendlyTranscriptError(video.transcript_error) && (
+                <dd className="mt-1 text-xs text-amber-200">{friendlyTranscriptError(video.transcript_error)}</dd>
               )}
             </div>
           </dl>

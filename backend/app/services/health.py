@@ -7,4 +7,4 @@ class HealthService:
 
     def check(self, db: Session) -> dict[str, str]:
         db.execute(text("SELECT 1"))
-        return {"status": "ok", "caption_engine": "embed-player-v4"}
+        return {"status": "ok", "caption_engine": "caption-proxy-v5"}

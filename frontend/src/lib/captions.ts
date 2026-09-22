@@ -5,7 +5,12 @@ export type CaptionCue = {
 };
 
 const INVIDIOUS_BASES = ["https://inv.nadeko.net"];
-const PIPED_BASES = ["https://api.piped.private.coffee"];
+const PIPED_BASES = [
+  "https://api.piped.private.coffee",
+  "https://pipedapi.r4fo.com",
+  "https://pipedapi.leptons.xyz",
+  "https://pipedapi.smnz.de",
+];
 
 const VTT_TS =
   /(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})\s*-->\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})/;
@@ -60,6 +65,14 @@ export function parseJson3Captions(payload: { events?: Array<{ tStartMs?: number
 }
 
 export async function fetchMirrorCues(videoId: string): Promise<CaptionCue[]> {
+  try {
+    const cues = await fetchHostingerProxy(videoId);
+    if (cues.length) {
+      return cues;
+    }
+  } catch {
+    // Hostinger PHP proxy is optional; continue to public mirrors.
+  }
   for (const base of INVIDIOUS_BASES) {
     try {
       const cues = await fetchInvidious(base, videoId);
@@ -81,6 +94,22 @@ export async function fetchMirrorCues(videoId: string): Promise<CaptionCue[]> {
     }
   }
   throw new Error("Could not load captions from a public caption mirror.");
+}
+
+async function fetchHostingerProxy(videoId: string): Promise<CaptionCue[]> {
+  const response = await fetch(`/caption-proxy.php?v=${encodeURIComponent(videoId)}`);
+  if (!response.ok) {
+    throw new Error(`Caption proxy HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  const segments = Array.isArray(payload?.segments) ? payload.segments : [];
+  return segments
+    .map((item: { start?: number; duration?: number; text?: string }) => ({
+      start: Number(item.start) || 0,
+      duration: Number(item.duration) || 0,
+      text: String(item.text || "").trim(),
+    }))
+    .filter((item: CaptionCue) => item.text);
 }
 
 async function fetchInvidious(base: string, videoId: string): Promise<CaptionCue[]> {
@@ -126,10 +155,50 @@ async function fetchPiped(base: string, videoId: string): Promise<CaptionCue[]> 
 
 async function fetchJson(url: string): Promise<Record<string, any>> {
   const response = await fetch(url);
+  let payload: Record<string, any> | null = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  const blocked = hostBlockReason(payload);
+  if (blocked) {
+    throw new Error(blocked);
+  }
   if (!response.ok) {
     throw new Error(`Caption mirror HTTP ${response.status}`);
   }
-  return response.json();
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Caption mirror returned a non-JSON body.");
+  }
+  return payload;
+}
+
+function hostBlockReason(payload: Record<string, any> | null): string | null {
+  if (!payload) {
+    return null;
+  }
+  if (payload.subtitles || payload.captions || payload.events) {
+    return null;
+  }
+  const blob = `${payload.error || ""} ${payload.message || ""} ${payload.errorMessage || ""}`;
+  const lower = blob.toLowerCase();
+  if (
+    lower.includes("login_required") ||
+    lower.includes("not a bot") ||
+    lower.includes("signinconfirm") ||
+    lower.includes("confirm that you're not a bot")
+  ) {
+    return "YouTube bot-check blocked this caption host.";
+  }
+  if (payload.error || payload.message) {
+    const message = String(payload.message || payload.error).split("\n")[0];
+    if (message.includes("org.schabi") || message.includes("at org.")) {
+      return "YouTube bot-check blocked this caption host.";
+    }
+    return message.slice(0, 180);
+  }
+  return null;
 }
 
 function rankTracks(tracks: Array<Record<string, any>>): Array<Record<string, any>> {

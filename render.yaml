@@ -16,6 +16,8 @@ services:
         value: sqlite:///./admention.db
       - key: BACKEND_CORS_ORIGINS
         value: https://adverify.codewithbharat.dev
+      - key: CAPTION_PROXY_URL
+        value: https://adverify.codewithbharat.dev/caption-proxy.php
       - key: YOUTUBE_API_KEY
         sync: false
       # Logging — INFO shows every provider attempt in Render logs

@@ -211,10 +211,31 @@ def test_default_provider_chain_ends_with_whisper(db) -> None:
         "innertube",
         "youtube",
         "ytdlp",
+        "hostinger_proxy",
         "captions_mirror",
         "fixture",
         "whisper",
     ]
+
+
+def test_production_provider_chain_tries_hostinger_first(monkeypatch, db) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        service = TranscriptService(db)
+        assert [provider.name for provider in service.providers] == [
+            "hostinger_proxy",
+            "captions_mirror",
+            "innertube",
+            "youtube",
+            "ytdlp",
+            "fixture",
+            "whisper",
+        ]
+    finally:
+        get_settings.cache_clear()
 
 
 def test_skips_direct_youtube_providers_after_ip_block(db) -> None:

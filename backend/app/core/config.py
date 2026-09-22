@@ -33,9 +33,17 @@ class Settings(BaseSettings):
     mention_context_before: int = 2
     mention_context_after: int = 2
 
+    # Hostinger PHP relay. Render calls this so YouTube sees Hostinger's IP, not Render's.
+    caption_proxy_url: str = "https://adverify.codewithbharat.dev/caption-proxy.php"
+
     # Caption mirrors used when YouTube blocks datacenter IPs (Render, etc.).
     invidious_instances: str = "https://inv.nadeko.net"
-    piped_instances: str = "https://api.piped.private.coffee"
+    piped_instances: str = (
+        "https://api.piped.private.coffee,"
+        "https://pipedapi.r4fo.com,"
+        "https://pipedapi.leptons.xyz,"
+        "https://pipedapi.smnz.de"
+    )
 
     # -------------------------------------------------------------------
     # Proxy configuration (for bypassing YouTube datacenter IP blocks)

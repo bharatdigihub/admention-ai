@@ -58,7 +58,7 @@ class CaptionMirrorTranscriptProvider:
                         )
                         return cues
                 except Exception as exc:
-                    errors.append(f"invidious {base}: {type(exc).__name__}: {exc}")
+                    errors.append(f"invidious {base}: {_sanitize_error(str(exc))}")
                     logger.info("Invidious %s failed for %s [%s]: %s", base, video_id, type(exc).__name__, exc)
 
             for base in self._piped:
@@ -73,19 +73,27 @@ class CaptionMirrorTranscriptProvider:
                         )
                         return cues
                 except Exception as exc:
-                    errors.append(f"piped {base}: {type(exc).__name__}: {exc}")
+                    errors.append(f"piped {base}: {_sanitize_error(str(exc))}")
                     logger.info("Piped %s failed for %s [%s]: %s", base, video_id, type(exc).__name__, exc)
         finally:
             if owns_client:
                 client.close()
 
         detail = "; ".join(errors[:4]) if errors else "no caption-mirror instances configured"
-        raise TranscriptUnavailableError(f"Caption mirrors could not load this transcript: {detail}")
+        raise TranscriptUnavailableError(
+            "Public caption hosts are blocked or busy for this video. "
+            f"{_sanitize_error(detail)}"
+        )
 
     def _fetch_invidious(self, client: httpx.Client, base: str, video_id: str) -> list[TranscriptCue]:
         listing = client.get(f"{base.rstrip('/')}/api/v1/captions/{video_id}")
+        payload = _json_or_none(listing)
+        blocked = _host_block_reason(payload)
+        if blocked:
+            raise TranscriptUnavailableError(blocked)
         listing.raise_for_status()
-        payload = listing.json()
+        if not isinstance(payload, dict) and not isinstance(payload, list):
+            raise TranscriptUnavailableError("Invidious returned a non-JSON caption listing.")
         tracks = payload.get("captions") if isinstance(payload, dict) else payload
         if not isinstance(tracks, list) or not tracks:
             raise TranscriptUnavailableError("Invidious returned no caption tracks.")
@@ -111,8 +119,11 @@ class CaptionMirrorTranscriptProvider:
 
     def _fetch_piped(self, client: httpx.Client, base: str, video_id: str) -> list[TranscriptCue]:
         response = client.get(f"{base.rstrip('/')}/streams/{video_id}")
+        payload = _json_or_none(response)
+        blocked = _host_block_reason(payload)
+        if blocked:
+            raise TranscriptUnavailableError(blocked)
         response.raise_for_status()
-        payload = response.json()
         tracks = payload.get("subtitles") if isinstance(payload, dict) else None
         if not isinstance(tracks, list) or not tracks:
             raise TranscriptUnavailableError("Piped returned no subtitle tracks.")
@@ -148,6 +159,35 @@ def _rank_caption_tracks(tracks: list[dict]) -> list[dict]:
 
 def _split_urls(raw: str) -> list[str]:
     return [part.strip().rstrip("/") for part in (raw or "").split(",") if part.strip()]
+
+
+def _json_or_none(response: httpx.Response) -> object | None:
+    try:
+        return response.json()
+    except Exception:
+        return None
+
+
+def _host_block_reason(payload: object) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("subtitles") or payload.get("captions") or payload.get("events"):
+        return None
+    blob = " ".join(str(payload.get(key) or "") for key in ("error", "message", "errorMessage"))
+    lower = blob.lower()
+    if any(token in lower for token in ("login_required", "not a bot", "signinconfirm", "confirm that you're not a bot")):
+        return "YouTube bot-check blocked this caption host."
+    if payload.get("error") or payload.get("message"):
+        message = str(payload.get("message") or payload.get("error"))
+        return _sanitize_error(message.split("\n", 1)[0])
+    return None
+
+
+def _sanitize_error(message: str) -> str:
+    first = message.split("\n", 1)[0].strip()
+    if "org.schabi" in first or "at org." in first:
+        return "YouTube bot-check blocked this caption host."
+    return first[:220]
 
 
 def _with_fmt(url: str, fmt: str) -> str:
