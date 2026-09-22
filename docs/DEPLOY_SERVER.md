@@ -98,7 +98,7 @@ Keep Hostinger DNS on the shared host. Do **not** CNAME `adverify` to Render; on
 
 ## 4. Check the live app
 
-1. `https://YOUR-SERVICE.onrender.com/api/health` → `{"status":"ok","caption_engine":"caption-proxy-v5"}`
+1. `https://YOUR-SERVICE.onrender.com/api/health` → `{"status":"ok","caption_engine":"caption-proxy-v6"}`
 2. `https://adverify.codewithbharat.dev/caption-proxy.php?v=dQw4w9WgXcQ` → JSON with `segments`
 3. [https://adverify.codewithbharat.dev](https://adverify.codewithbharat.dev/) → dashboard
 4. Analyze a YouTube URL; transcript should become available, then search an advertiser

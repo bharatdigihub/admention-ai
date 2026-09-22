@@ -1,4 +1,5 @@
 import logging
+import os
 
 from sqlalchemy.orm import Session
 
@@ -224,8 +225,9 @@ def default_transcript_providers() -> list[TranscriptProvider]:
 
 def prefer_hostinger_caption_proxy(settings=None) -> bool:
     settings = settings or get_settings()
+    on_render = bool(os.environ.get("RENDER")) or settings.app_env == "production"
     return (
-        settings.app_env == "production"
+        on_render
         and not settings.proxy_url
         and not settings.has_webshare
         and bool(settings.caption_proxy_url.strip())

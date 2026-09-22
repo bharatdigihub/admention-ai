@@ -27,7 +27,30 @@ if (!preg_match('/^[A-Za-z0-9_-]{11}$/', $videoId)) {
     exit;
 }
 
+$YOUTUBE_VISITOR = "";
+
 $clients = [
+    [
+        "clientName" => "IOS",
+        "clientVersion" => "20.10.38",
+        "deviceMake" => "Apple",
+        "deviceModel" => "iPhone16,2",
+        "osName" => "iOS",
+        "osVersion" => "18.1.0",
+        "hl" => "en",
+        "gl" => "US",
+        "userAgent" => "com.google.ios.youtube/20.10.38 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X)",
+        "clientNameId" => "5",
+    ],
+    [
+        "clientName" => "WEB_EMBEDDED_PLAYER",
+        "clientVersion" => "1.20240920.01.00",
+        "clientScreen" => "EMBED",
+        "hl" => "en",
+        "gl" => "US",
+        "userAgent" => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "clientNameId" => "56",
+    ],
     [
         "clientName" => "WEB",
         "clientVersion" => "2.20250925.01.00",
@@ -47,28 +70,9 @@ $clients = [
         "userAgent" => "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip",
         "clientNameId" => "3",
     ],
-    [
-        "clientName" => "WEB_EMBEDDED_PLAYER",
-        "clientVersion" => "1.20240920.01.00",
-        "clientScreen" => "EMBED",
-        "hl" => "en",
-        "gl" => "US",
-        "userAgent" => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "clientNameId" => "56",
-    ],
-    [
-        "clientName" => "IOS",
-        "clientVersion" => "20.10.38",
-        "deviceMake" => "Apple",
-        "deviceModel" => "iPhone16,2",
-        "osName" => "iOS",
-        "osVersion" => "18.1.0",
-        "hl" => "en",
-        "gl" => "US",
-        "userAgent" => "com.google.ios.youtube/20.10.38 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X)",
-        "clientNameId" => "5",
-    ],
 ];
+
+warm_youtube_session($videoId);
 
 $errors = [];
 foreach ($clients as $client) {
@@ -103,6 +107,7 @@ function fetch_segments(string $videoId, array $client): array
         $payload,
         innertube_headers($client, $videoId)
     );
+    remember_visitor($player);
     $tracks = $player["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"] ?? [];
     if (!is_array($tracks) || !$tracks) {
         $status = $player["playabilityStatus"]["status"] ?? "unknown";
@@ -136,27 +141,89 @@ function fetch_via_next(string $videoId, array $client): array
     if ($client["clientName"] === "WEB_EMBEDDED_PLAYER") {
         return [];
     }
-    $payload = player_payload($videoId, $client);
-    $next = http_json(
-        "POST",
-        "https://www.youtube.com/youtubei/v1/next?prettyPrint=false",
-        $payload,
-        innertube_headers($client, $videoId)
-    );
-    $params = find_transcript_params($next);
-    if (!$params) {
+    try {
+        $payload = player_payload($videoId, $client);
+        $next = http_json(
+            "POST",
+            "https://www.youtube.com/youtubei/v1/next?prettyPrint=false",
+            $payload,
+            innertube_headers($client, $videoId)
+        );
+        remember_visitor($next);
+        $params = find_transcript_params($next);
+        if (!$params) {
+            return [];
+        }
+        $body = http_json(
+            "POST",
+            "https://www.youtube.com/youtubei/v1/get_transcript?prettyPrint=false",
+            [
+                "context" => ["client" => client_body($client)],
+                "params" => $params,
+            ],
+            innertube_headers($client, $videoId)
+        );
+        return parse_get_transcript($body);
+    } catch (Throwable $exc) {
         return [];
     }
-    $body = http_json(
-        "POST",
-        "https://www.youtube.com/youtubei/v1/get_transcript?prettyPrint=false",
-        [
-            "context" => ["client" => client_body($client)],
-            "params" => $params,
-        ],
-        innertube_headers($client, $videoId)
-    );
-    return parse_get_transcript($body);
+}
+
+function warm_youtube_session(string $videoId): void
+{
+    try {
+        $html = http_text(
+            "GET",
+            "https://www.youtube.com/watch?v={$videoId}",
+            null,
+            [
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                "Accept-Language: en-US,en;q=0.9",
+                "Accept: text/html,application/xhtml+xml",
+            ]
+        );
+        remember_visitor($html);
+    } catch (Throwable $exc) {
+        // Player clients can still succeed without a warmed watch session.
+    }
+}
+
+function remember_visitor($source): void
+{
+    global $YOUTUBE_VISITOR;
+    if (is_string($source)) {
+        if (preg_match('/"VISITOR_DATA":"([^"]+)"/', $source, $match) || preg_match('/"visitorData":"([^"]+)"/', $source, $match)) {
+            $YOUTUBE_VISITOR = $match[1];
+        }
+        return;
+    }
+    if (!is_array($source)) {
+        return;
+    }
+    $visitor = find_visitor_data($source);
+    if ($visitor) {
+        $YOUTUBE_VISITOR = $visitor;
+    }
+}
+
+function find_visitor_data($node): ?string
+{
+    if (!is_array($node)) {
+        return null;
+    }
+    if (isset($node["responseContext"]["visitorData"]) && is_string($node["responseContext"]["visitorData"])) {
+        return $node["responseContext"]["visitorData"];
+    }
+    if (isset($node["visitorData"]) && is_string($node["visitorData"])) {
+        return $node["visitorData"];
+    }
+    foreach ($node as $child) {
+        $found = find_visitor_data($child);
+        if ($found) {
+            return $found;
+        }
+    }
+    return null;
 }
 
 function player_payload(string $videoId, array $client): array
@@ -285,7 +352,7 @@ function parse_json3(array $payload): array
         foreach ($event["segs"] ?? [] as $seg) {
             $text .= (string) ($seg["utf8"] ?? "");
         }
-        $text = trim(preg_replace("/\s+/", " ", str_replace("\n", " ", $text)));
+        $text = trim(preg_replace("/\s+/", " ", html_entity_decode(str_replace("\n", " ", $text), ENT_QUOTES | ENT_HTML5, "UTF-8")));
         if ($text === "") {
             continue;
         }
@@ -319,15 +386,29 @@ function parse_timedtext_xml(string $content): array
 
 function innertube_headers(array $client, string $videoId): array
 {
-    return [
+    global $YOUTUBE_VISITOR;
+    $headers = [
         "Content-Type: application/json",
         "User-Agent: " . $client["userAgent"],
         "X-YouTube-Client-Name: " . $client["clientNameId"],
         "X-YouTube-Client-Version: " . $client["clientVersion"],
         "Origin: https://www.youtube.com",
         "Accept-Language: en-US,en;q=0.9",
-        "Referer: https://www.youtube.com/embed/{$videoId}",
+        "Referer: https://www.youtube.com/watch?v={$videoId}",
     ];
+    if (!empty($YOUTUBE_VISITOR)) {
+        $headers[] = "X-Goog-Visitor-Id: " . $YOUTUBE_VISITOR;
+    }
+    return $headers;
+}
+
+function cookie_file(): string
+{
+    static $path = null;
+    if ($path === null) {
+        $path = tempnam(sys_get_temp_dir(), "ytck");
+    }
+    return $path;
 }
 
 function with_fmt(string $url, string $fmt): string
@@ -365,11 +446,14 @@ function http_text(string $method, string $url, $payload, array $headers): strin
 {
     if (function_exists("curl_init")) {
         $ch = curl_init($url);
+        $cookie = cookie_file();
         $opts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_TIMEOUT => 25,
             CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_COOKIEFILE => $cookie,
+            CURLOPT_COOKIEJAR => $cookie,
         ];
         if (strtoupper($method) === "POST") {
             $opts[CURLOPT_POST] = true;

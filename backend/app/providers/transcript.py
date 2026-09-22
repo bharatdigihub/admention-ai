@@ -14,6 +14,7 @@ _IP_BLOCK_MARKERS = (
     "datacenter ip",
     "ip address blocked",
     "too many requests",
+    "400 bad request",
     "login_required",
     "signinconfirm",
 )

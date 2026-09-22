@@ -238,6 +238,18 @@ def test_production_provider_chain_tries_hostinger_first(monkeypatch, db) -> Non
         get_settings.cache_clear()
 
 
+def test_render_provider_chain_tries_hostinger_first(monkeypatch, db) -> None:
+    monkeypatch.setenv("RENDER", "true")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        service = TranscriptService(db)
+        assert service.providers[0].name == "hostinger_proxy"
+    finally:
+        get_settings.cache_clear()
+
+
 def test_skips_direct_youtube_providers_after_ip_block(db) -> None:
     video = _video(db)
     blocked = FakeProvider(
