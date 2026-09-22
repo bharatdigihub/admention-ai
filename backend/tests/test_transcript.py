@@ -250,6 +250,27 @@ def test_render_provider_chain_tries_hostinger_first(monkeypatch, db) -> None:
         get_settings.cache_clear()
 
 
+def test_webshare_proxy_uses_direct_youtube_first(monkeypatch, db) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setenv("WEBSHARE_PROXY_USERNAME", "test-user")
+    monkeypatch.setenv("WEBSHARE_PROXY_PASSWORD", "test-pass")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.proxy_url == "http://test-user:test-pass@p.webshare.io:80"
+        service = TranscriptService(db)
+        assert [provider.name for provider in service.providers[:3]] == [
+            "innertube",
+            "youtube",
+            "ytdlp",
+        ]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_skips_direct_youtube_providers_after_ip_block(db) -> None:
     video = _video(db)
     blocked = FakeProvider(

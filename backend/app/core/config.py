@@ -1,6 +1,10 @@
 from functools import lru_cache
+from urllib.parse import quote
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+WEBSHARE_PROXY_HOST = "p.webshare.io"
+WEBSHARE_PROXY_PORT = 80
 
 
 class Settings(BaseSettings):
@@ -73,7 +77,13 @@ class Settings(BaseSettings):
     def proxy_url(self) -> str | None:
         """Return a usable HTTP proxy URL, or None if no proxy is configured."""
         url = self.http_proxy.strip()
-        return url if url else None
+        if url:
+            return url
+        if self.has_webshare:
+            user = quote(self.webshare_proxy_username.strip(), safe="")
+            password = quote(self.webshare_proxy_password.strip(), safe="")
+            return f"http://{user}:{password}@{WEBSHARE_PROXY_HOST}:{WEBSHARE_PROXY_PORT}"
+        return None
 
     @property
     def has_webshare(self) -> bool:

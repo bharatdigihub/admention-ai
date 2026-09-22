@@ -155,7 +155,7 @@ class InnertubeTranscriptProvider:
         self._visitor: str | None = None
 
     def fetch(self, video_id: str) -> list[TranscriptCue]:
-        client = self._client or build_httpx_client(timeout=12.0, follow_redirects=True)
+        client = self._client or build_httpx_client(timeout=25.0, follow_redirects=True)
         owns_client = self._client is None
         self._visitor = None
         try:
