@@ -14,10 +14,11 @@ from app.services.transcript import TranscriptService
 
 
 class FakeProvider:
-    def __init__(self, name: str, result: list[TranscriptCue] | Exception) -> None:
+    def __init__(self, name: str, result: list[TranscriptCue] | Exception, direct_youtube: bool = False) -> None:
         self.name = name
         self._result = result
         self.calls = 0
+        self.direct_youtube = direct_youtube
 
     def fetch(self, video_id: str) -> list[TranscriptCue]:
         self.calls += 1
@@ -207,12 +208,37 @@ def test_whisper_disabled_is_unavailable(monkeypatch) -> None:
 def test_default_provider_chain_ends_with_whisper(db) -> None:
     service = TranscriptService(db)
     assert [provider.name for provider in service.providers] == [
+        "innertube",
         "youtube",
-        "youtube",
-        "youtube",
+        "ytdlp",
+        "captions_mirror",
         "fixture",
         "whisper",
     ]
+
+
+def test_skips_direct_youtube_providers_after_ip_block(db) -> None:
+    video = _video(db)
+    blocked = FakeProvider(
+        "innertube",
+        TranscriptUnavailableError("YouTube blocked this server's IP address (HTTP 403)."),
+        direct_youtube=True,
+    )
+    skipped = FakeProvider(
+        "ytdlp",
+        [TranscriptCue(start=1.0, duration=1.0, text="should not run")],
+        direct_youtube=True,
+    )
+    mirror = FakeProvider(
+        "captions_mirror",
+        [TranscriptCue(start=43.0, duration=2.0, text="Never gonna give you up")],
+    )
+    service = TranscriptService(db, providers=[blocked, skipped, mirror])
+    updated = service.ensure_transcript(video)
+    assert skipped.calls == 0
+    assert mirror.calls == 1
+    assert updated.transcript_status == "available"
+    assert service.get_segments(video.youtube_video_id)[0].text == "Never gonna give you up"
 
 
 def test_youtube_transcript_provider_preserves_timestamps() -> None:

@@ -4,7 +4,7 @@ Live split:
 
 | Piece | Where | URL |
 | --- | --- | --- |
-| Python / FastAPI | [Render](https://render.com) web service | `https://admention-ai.onrender.com` (confirm after first deploy) |
+| Python / FastAPI | [Render](https://render.com) web service | `https://admention-ai-1.onrender.com` |
 | React dashboard | Hostinger FTP (`/adverify`) | [https://adverify.codewithbharat.dev](https://adverify.codewithbharat.dev/) |
 
 The React app calls the Render API. CORS on the backend allows `https://adverify.codewithbharat.dev`.
@@ -54,7 +54,7 @@ If Blueprint asks for a card, skip it and create a **Web Service** instead:
 
 Free Render services sleep when idle. The first request after sleep can take about a minute. SQLite on the free plan is wiped on each new deploy unless you attach a disk.
 
-If YouTube captions fail from Render, that is usually a datacenter IP block, not a frontend bug.
+If YouTube captions fail from Render, the API falls back to public caption mirrors (Invidious/Piped). That is usually a datacenter IP block of youtube.com itself, not a frontend bug.
 
 ---
 

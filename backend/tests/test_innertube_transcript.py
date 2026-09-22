@@ -75,6 +75,19 @@ def test_innertube_unavailable_without_tracks() -> None:
         InnertubeTranscriptProvider(client=client).fetch("dQw4w9WgXcQ")
 
 
+def test_innertube_aborts_on_http_403() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(403, text="blocked")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(TranscriptUnavailableError, match="403"):
+        InnertubeTranscriptProvider(client=client).fetch("dQw4w9WgXcQ")
+    assert len(calls) == 1
+
+
 def test_find_transcript_params() -> None:
     params = find_transcript_params(
         {

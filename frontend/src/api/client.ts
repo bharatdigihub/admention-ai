@@ -59,6 +59,28 @@ export async function getVideoTranscript(videoId: string): Promise<{
   return response.data;
 }
 
+export async function ingestVideoTranscript(
+  videoId: string,
+  segments: { start: number; duration: number; text: string }[],
+): Promise<AnalyzeVideoResponse> {
+  const response = await api.post(`/api/videos/${videoId}/transcript`, { segments });
+  const transcript = response.data as {
+    video_id: string;
+    transcript_status: string;
+    segments: { start: number; duration: number; text: string }[];
+  };
+  return {
+    video_id: transcript.video_id,
+    title: null,
+    channel: null,
+    published_at: null,
+    duration_seconds: null,
+    thumbnail_url: null,
+    transcript_status: transcript.transcript_status,
+    transcript_error: null,
+  };
+}
+
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail;

@@ -4,18 +4,30 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import CouldNotRetrieveTranscript
 
 from app.core.exceptions import TranscriptUnavailableError
+from app.core.proxy import build_yta_proxy_config
 from app.providers.transcript import TranscriptCue, TranscriptProvider
 
 logger = logging.getLogger(__name__)
 
 
 class YouTubeTranscriptProvider:
-    """Retrieves timestamped captions from YouTube when they exist."""
+    """Retrieves timestamped captions from YouTube when they exist.
+
+    When a proxy is configured (HTTP_PROXY or WEBSHARE_PROXY_* env vars),
+    all requests are routed through it so that cloud datacenter IP blocks
+    are bypassed transparently.
+    """
 
     name = "youtube"
+    direct_youtube = True
 
     def __init__(self, api: YouTubeTranscriptApi | None = None) -> None:
-        self._api = api or YouTubeTranscriptApi()
+        if api is not None:
+            # Accept an injected API instance (used in tests).
+            self._api = api
+        else:
+            proxy_config = build_yta_proxy_config()
+            self._api = YouTubeTranscriptApi(proxy_config=proxy_config)
 
     def fetch(self, video_id: str) -> list[TranscriptCue]:
         try:

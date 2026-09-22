@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import TranscriptUnavailableError, VideoNotFoundError
 from app.models.transcript import TranscriptSegment
 from app.models.video import Video
+from app.providers.caption_mirror import CaptionMirrorTranscriptProvider
 from app.providers.fixture_transcript import LocalFixtureTranscriptProvider
 from app.providers.innertube_transcript import InnertubeTranscriptProvider
-from app.providers.transcript import TranscriptCue, TranscriptProvider
+from app.providers.transcript import TranscriptCue, TranscriptProvider, is_youtube_ip_block
 from app.providers.whisper_transcript import WhisperTranscriptProvider
 from app.providers.youtube_transcript import YouTubeTranscriptProvider
 from app.providers.ytdlp_transcript import YtDlpTranscriptProvider
@@ -33,6 +34,7 @@ class TranscriptService:
             InnertubeTranscriptProvider(),
             YouTubeTranscriptProvider(),
             YtDlpTranscriptProvider(),
+            CaptionMirrorTranscriptProvider(),
             LocalFixtureTranscriptProvider(),
             WhisperTranscriptProvider(),
         ]
@@ -99,8 +101,16 @@ class TranscriptService:
         cues: list[TranscriptCue] = []
         # Collect (provider_name, exception_type, message) tuples for every failure.
         error_details: list[str] = []
+        skip_direct_youtube = False
 
         for provider in self.providers:
+            if skip_direct_youtube and getattr(provider, "direct_youtube", False):
+                logger.info(
+                    "Skipping transcript provider %s for %s after YouTube IP block",
+                    provider.name,
+                    video.youtube_video_id,
+                )
+                continue
             try:
                 cues = self.normalize(provider.fetch(video.youtube_video_id))
                 if not cues:
@@ -118,6 +128,8 @@ class TranscriptService:
                 )
                 last_error = exc
                 error_details.append(f"{provider.name}({type(exc).__name__}): {exc}")
+                if getattr(provider, "direct_youtube", False) and is_youtube_ip_block(exc):
+                    skip_direct_youtube = True
                 continue
             except Exception as exc:
                 # Unexpected failure — log the full traceback so we see the real cause.
@@ -133,6 +145,8 @@ class TranscriptService:
                 wrapped.__cause__ = exc
                 last_error = wrapped
                 error_details.append(f"{provider.name}({type(exc).__name__}): {exc}")
+                if getattr(provider, "direct_youtube", False) and is_youtube_ip_block(exc):
+                    skip_direct_youtube = True
                 continue
 
         if used_provider is None or not cues:
@@ -172,3 +186,23 @@ class TranscriptService:
             used_provider.name,
         )
         return video
+
+    def ingest_cues(self, youtube_video_id: str, cues: list[TranscriptCue]) -> TranscriptResponse:
+        video = self.videos.get_by_youtube_id(youtube_video_id)
+        if video is None:
+            raise VideoNotFoundError("Video was not found. Analyze the YouTube URL first.")
+
+        normalized = self.normalize(cues)
+        if not normalized:
+            raise TranscriptUnavailableError("The uploaded transcript was empty.")
+
+        self.segments.replace_for_video(video, normalized)
+        video.transcript_status = "available"
+        self.db.commit()
+        self.db.refresh(video)
+        logger.info(
+            "Stored %s browser-recovered transcript segments for %s",
+            len(normalized),
+            video.youtube_video_id,
+        )
+        return self.get_transcript(youtube_video_id)

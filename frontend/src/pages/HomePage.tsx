@@ -6,10 +6,12 @@ import {
   getApiErrorMessage,
   getHealth,
   getVideoTranscript,
+  ingestVideoTranscript,
   MentionItem,
   MentionSearchResponse,
   searchMentions,
 } from "../api/client";
+import { fetchMirrorCues } from "../lib/captions";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Loading transcript...",
@@ -24,6 +26,7 @@ export function HomePage() {
   const [advertiser, setAdvertiser] = useState("never gonna");
   const [video, setVideo] = useState<AnalyzeVideoResponse | null>(null);
   const [results, setResults] = useState<MentionSearchResponse | null>(null);
+  const [recoveringTranscript, setRecoveringTranscript] = useState(false);
 
   const healthQuery = useQuery({
     queryKey: ["health"],
@@ -33,9 +36,29 @@ export function HomePage() {
 
   const analyzeMutation = useMutation({
     mutationFn: analyzeVideo,
-    onSuccess: (data) => {
-      setVideo(data);
+    onSuccess: async (data) => {
       setResults(null);
+      setVideo(data);
+      if (data.transcript_status !== "unavailable") {
+        setRecoveringTranscript(false);
+        return;
+      }
+      setRecoveringTranscript(true);
+      try {
+        const cues = await fetchMirrorCues(data.video_id);
+        await ingestVideoTranscript(data.video_id, cues);
+        setVideo({ ...data, transcript_status: "available", transcript_error: null });
+      } catch (error) {
+        setVideo({
+          ...data,
+          transcript_status: "unavailable",
+          transcript_error:
+            data.transcript_error ||
+            getApiErrorMessage(error, "Transcript unavailable from this cloud host."),
+        });
+      } finally {
+        setRecoveringTranscript(false);
+      }
     },
   });
 
@@ -126,7 +149,13 @@ export function HomePage() {
         )}
       </section>
 
-      {video && <VideoCard video={video} />}
+      {video && (
+        <VideoCard
+          video={
+            recoveringTranscript ? { ...video, transcript_status: "pending", transcript_error: null } : video
+          }
+        />
+      )}
 
       {video && (
         <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-xl">
@@ -145,6 +174,7 @@ export function HomePage() {
               type="submit"
               disabled={
                 searchMutation.isPending ||
+                recoveringTranscript ||
                 video.transcript_status === "unavailable" ||
                 video.transcript_status === "pending"
               }

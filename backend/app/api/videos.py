@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.transcript import TranscriptResponse
+from app.providers.transcript import TranscriptCue
+from app.schemas.transcript import TranscriptIngestRequest, TranscriptResponse
 from app.schemas.video import AnalyzeVideoRequest, AnalyzeVideoResponse
 from app.services.transcript import TranscriptService
 from app.services.video_analysis import VideoAnalysisService
@@ -32,3 +33,16 @@ def get_video_transcript(
     service: TranscriptService = Depends(get_transcript_service),
 ) -> TranscriptResponse:
     return service.get_transcript(video_id)
+
+
+@router.post("/{video_id}/transcript", response_model=TranscriptResponse)
+def ingest_video_transcript(
+    video_id: str,
+    payload: TranscriptIngestRequest,
+    service: TranscriptService = Depends(get_transcript_service),
+) -> TranscriptResponse:
+    cues = [
+        TranscriptCue(start=segment.start, duration=segment.duration, text=segment.text)
+        for segment in payload.segments
+    ]
+    return service.ingest_cues(video_id, cues)

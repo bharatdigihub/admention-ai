@@ -136,6 +136,28 @@ def test_get_transcript_when_unavailable(client: TestClient, db) -> None:
     assert body["segments"] == []
 
 
+def test_ingest_transcript_stores_browser_recovered_cues(client: TestClient, db) -> None:
+    _override_analysis(db, SAMPLE_METADATA)
+    client.post("/api/videos/analyze", json={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"})
+
+    response = client.post(
+        "/api/videos/dQw4w9WgXcQ/transcript",
+        json={
+            "segments": [
+                {"start": 43.12, "duration": 2.72, "text": "Never gonna give you up"},
+            ]
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["transcript_status"] == "available"
+    assert body["segments"][0]["text"] == "Never gonna give you up"
+
+    stored = client.get("/api/videos/dQw4w9WgXcQ/transcript")
+    assert stored.json()["transcript_status"] == "available"
+    assert stored.json()["segments"][0]["start"] == 43.12
+
+
 def test_analyze_video_rejects_invalid_url(client: TestClient) -> None:
     response = client.post("/api/videos/analyze", json={"youtube_url": "https://example.com/not-youtube"})
     assert response.status_code == 400

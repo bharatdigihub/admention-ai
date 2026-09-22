@@ -6,6 +6,7 @@ import httpx
 from yt_dlp import YoutubeDL
 
 from app.core.exceptions import TranscriptUnavailableError
+from app.core.proxy import build_httpx_client, build_ytdlp_proxy_opts
 from app.providers.caption_formats import parse_json3_captions
 from app.providers.transcript import TranscriptCue
 
@@ -27,9 +28,11 @@ class YtDlpTranscriptProvider:
 
     Tries multiple player_client configurations in order so that if one is
     rate-limited or blocked by YouTube on a cloud host, another may succeed.
+    Routes all requests through the configured HTTP proxy when available.
     """
 
-    name = "youtube"
+    name = "ytdlp"
+    direct_youtube = True
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client
@@ -40,7 +43,7 @@ class YtDlpTranscriptProvider:
         for player_clients in _PLAYER_CLIENT_ATTEMPTS:
             try:
                 caption_url = self._caption_url(video_id, player_clients)
-                client = self._client or httpx.Client(timeout=30.0, follow_redirects=True)
+                client = self._client or build_httpx_client(timeout=30.0, follow_redirects=True)
                 owns_client = self._client is None
                 try:
                     response = client.get(caption_url)
@@ -98,7 +101,7 @@ class YtDlpTranscriptProvider:
         ) from last_exc
 
     def _caption_url(self, video_id: str, player_clients: list[str]) -> str:
-        options = {
+        options: dict = {
             "skip_download": True,
             "quiet": True,
             "no_warnings": True,
@@ -115,6 +118,9 @@ class YtDlpTranscriptProvider:
                 ),
             },
         }
+        # Inject proxy into yt-dlp if configured.
+        options.update(build_ytdlp_proxy_opts())
+
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
 

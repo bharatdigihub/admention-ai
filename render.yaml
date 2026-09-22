@@ -21,10 +21,23 @@ services:
       # Logging — INFO shows every provider attempt in Render logs
       - key: LOG_LEVEL
         value: INFO
-      # Whisper fallback — set WHISPER_ENABLED=true + WHISPER_PROVIDER=mock
-      # in Render dashboard to enable the built-in mock fallback when YouTube
-      # blocks all network providers from this server IP.
+      # Whisper fallback — flip to true in Render dashboard for emergency mock fallback
       - key: WHISPER_ENABLED
         value: "false"
       - key: WHISPER_PROVIDER
         value: mock
+      # ---------------------------------------------------------------
+      # Proxy configuration — set ONE of the options below to allow all
+      # YouTube videos to work on Render without manual fixture files.
+      # ---------------------------------------------------------------
+      # Option A: Generic HTTP proxy URL (any residential proxy provider)
+      #   Format: http://username:password@proxy-host:port
+      - key: HTTP_PROXY
+        sync: false
+      # Option B: Webshare residential proxy (recommended — free tier available)
+      #   Sign up free at https://proxy.webshare.io/register
+      #   Credentials at https://dashboard.webshare.io/proxy/settings
+      - key: WEBSHARE_PROXY_USERNAME
+        sync: false
+      - key: WEBSHARE_PROXY_PASSWORD
+        sync: false

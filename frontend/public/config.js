@@ -1,1 +1,1 @@
-window.__API_BASE__ = "https://admention-ai.onrender.com";
+window.__API_BASE__ = "https://admention-ai-1.onrender.com";

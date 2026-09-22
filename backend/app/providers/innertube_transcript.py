@@ -6,8 +6,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import httpx
 
 from app.core.exceptions import TranscriptUnavailableError
+from app.core.proxy import build_httpx_client
 from app.providers.caption_formats import parse_caption_body
-from app.providers.transcript import TranscriptCue, TranscriptProvider
+from app.providers.transcript import TranscriptCue, TranscriptProvider, is_youtube_ip_block
 
 logger = logging.getLogger(__name__)
 
@@ -146,14 +147,15 @@ def parse_get_transcript_cues(node: object) -> list[TranscriptCue]:
 class InnertubeTranscriptProvider:
     """Fetches captions through YouTube InnerTube so cloud hosts can still read tracks."""
 
-    name = "youtube"
+    name = "innertube"
+    direct_youtube = True
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client
         self._visitor: str | None = None
 
     def fetch(self, video_id: str) -> list[TranscriptCue]:
-        client = self._client or httpx.Client(timeout=45.0, follow_redirects=True)
+        client = self._client or build_httpx_client(timeout=12.0, follow_redirects=True)
         owns_client = self._client is None
         self._visitor = None
         try:
@@ -215,6 +217,18 @@ class InnertubeTranscriptProvider:
                             transcript_client["clientName"],
                         )
                         return cues
+            except TranscriptUnavailableError as exc:
+                if is_youtube_ip_block(exc):
+                    raise
+                last_error = exc
+                logger.info(
+                    "InnerTube %s get_transcript path failed for %s [%s]: %s",
+                    client_config["clientName"],
+                    video_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                continue
             except Exception as exc:
                 last_error = exc
                 logger.info(
@@ -339,8 +353,8 @@ class InnertubeTranscriptProvider:
                     last_status,
                 )
             except TranscriptUnavailableError as exc:
-                # Re-raise IP-block errors immediately — no point trying other clients
-                # if the IP itself is blocked (all will fail the same way).
+                if is_youtube_ip_block(exc):
+                    raise
                 last_error = exc
                 logger.info(
                     "InnerTube %s player call blocked for %s: %s",
